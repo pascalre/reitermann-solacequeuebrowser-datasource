@@ -60,7 +60,7 @@ async function waitForBroker() {
       });
       if (response.ok) {
         const body = await response.json();
-        process.stdout.write(`\nBroker ready — SEMP ${body?.data?.sempVersion} on ${body?.data?.platform}\n`);
+        process.stdout.write(`\nBroker ready: SEMP ${body?.data?.sempVersion} on ${body?.data?.platform}\n`);
         return;
       }
     } catch {

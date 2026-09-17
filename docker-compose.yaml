@@ -10,7 +10,7 @@ services:
       solace:
         condition: service_started
 
-  # Local Solace PubSub+ broker for development. Kept close to the reference
+  # Local Solace Event Broker for development. Kept close to the reference
   # compose file from SolaceLabs/solace-single-docker-compose, because the broker
   # is picky about its runtime environment.
   #
@@ -46,7 +46,7 @@ services:
       username_admin_password: admin
       system_scaling_maxconnectioncount: '100'
     healthcheck:
-      # No external binary required — some broker images ship without curl.
+      # No external binary required, because some broker images ship without curl.
       test: ['CMD-SHELL', 'timeout 2 bash -c "</dev/tcp/127.0.0.1/8080" || exit 1']
       interval: 10s
       timeout: 5s

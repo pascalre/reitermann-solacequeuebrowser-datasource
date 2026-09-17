@@ -27,7 +27,7 @@ export const DEFAULT_QUERY: Partial<SolaceQuery> = {
  * Data source configuration.
  *
  * The Solace JavaScript API runs in the browser, so everything the connection
- * needs has to live in `jsonData` — a Grafana secret would never reach the
+ * needs has to live in `jsonData`, because a Grafana secret would never reach the
  * client. That means any user who can read this data source can read the
  * messaging credentials. Use a client username restricted to read-only queue
  * access. See the warning rendered in the ConfigEditor.
@@ -35,7 +35,7 @@ export const DEFAULT_QUERY: Partial<SolaceQuery> = {
 export interface SolaceDataSourceOptions extends DataSourceJsonData {
   /** Web Messaging endpoint reachable from the browser, e.g. ws://localhost:8008. */
   url?: string;
-  /** Message VPN — configured here, not per panel. */
+  /** Message VPN. Configured here, not per panel. */
   msgVpn?: string;
   /** Client username. */
   userName?: string;

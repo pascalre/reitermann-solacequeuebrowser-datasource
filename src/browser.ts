@@ -34,7 +34,7 @@ let factoryReady = false;
  *
  * solclientjs is imported statically on purpose. A dynamic import would put it
  * in a separate webpack chunk, and Grafana serves plugin assets from a single
- * dist directory that dev and production builds name differently — a stale
+ * dist directory that dev and production builds name differently. A stale
  * directory then fails with "Loading chunk ... failed". Since every query and
  * the health check need the library anyway, splitting it saved nothing.
  */
@@ -56,7 +56,7 @@ function describe(error: unknown): string {
     const candidate = error as { message?: string; reason?: { message?: string } };
     const parts = [candidate.message, candidate.reason?.message].filter(Boolean);
     if (parts.length > 0) {
-      return parts.join(' — ');
+      return parts.join('; ');
     }
   }
   return String(error);
@@ -98,7 +98,7 @@ function disposeQuietly(session: solace.Session, browser?: solace.QueueBrowser):
 }
 
 /**
- * Opens a messaging session and closes it again — the data source health check.
+ * Opens a messaging session and closes it again. This is the data source health check.
  * Resolves with the broker's transport description.
  */
 export async function testConnection(options: ConnectionOptions): Promise<string> {
@@ -157,7 +157,7 @@ export async function testConnection(options: ConnectionOptions): Promise<string
 /**
  * Browses a queue without consuming from it and resolves with the messages seen.
  *
- * Resolves early — and successfully — when the queue holds fewer messages than
+ * Resolves early, and successfully, when the queue holds fewer messages than
  * `limit`: a browse has no "end of queue" event, so an idle window is the only
  * way to tell "nothing more is coming" from "still arriving".
  *

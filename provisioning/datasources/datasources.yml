@@ -10,7 +10,7 @@ datasources:
     editable: true
 
     jsonData:
-      # Web Messaging endpoint — opened by the browser, so this is a host-side URL.
+      # Web Messaging endpoint, opened by the browser, so this is a host-side URL.
       url: 'ws://localhost:8008'
       msgVpn: 'default'
       userName: 'default'

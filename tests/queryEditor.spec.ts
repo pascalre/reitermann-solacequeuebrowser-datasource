@@ -10,7 +10,7 @@ test('smoke: should render query editor', async ({ panelEditPage, readProvisione
   await expect(row.getByLabel('Payload format')).toBeVisible();
 });
 
-test('the query editor has no Message VPN field — it belongs to the data source', async ({
+test('the query editor has no Message VPN field, it belongs to the data source', async ({
   panelEditPage,
   readProvisionedDataSource,
 }) => {
