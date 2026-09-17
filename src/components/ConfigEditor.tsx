@@ -1,203 +1,129 @@
 import React, { ChangeEvent, useCallback } from 'react';
-import { Alert, Field, Input, SecretInput, Stack, Switch } from '@grafana/ui';
+import { Alert, Field, Input, Stack } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps, updateDatasourcePluginJsonDataOption } from '@grafana/data';
-import { DEFAULT_OPTIONS, SolaceDataSourceOptions, SolaceSecureJsonData } from '../types';
+import { DEFAULT_OPTIONS, SolaceDataSourceOptions } from '../types';
 
-type Props = DataSourcePluginOptionsEditorProps<SolaceDataSourceOptions, SolaceSecureJsonData>;
-
-const LABEL_WIDTH = 34;
+type Props = DataSourcePluginOptionsEditorProps<SolaceDataSourceOptions>;
 
 export function ConfigEditor(props: Props) {
-  const { onOptionsChange, options } = props;
-  const { jsonData, secureJsonFields, secureJsonData } = options;
+  const { options } = props;
+  const { jsonData } = options;
 
   const setJsonData = useCallback(
     <K extends keyof SolaceDataSourceOptions>(key: K, value: SolaceDataSourceOptions[K]) => {
-      updateDatasourcePluginJsonDataOption(props, key as string, value);
+      updateDatasourcePluginJsonDataOption(props, key, value);
     },
     [props]
   );
 
-  const onUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onOptionsChange({
-      ...options,
-      url: event.target.value,
-      // The SEMP API always needs credentials, so Grafana's basic auth is on.
-      basicAuth: true,
-    });
-  };
+  const onText =
+    <K extends keyof SolaceDataSourceOptions>(key: K) =>
+    (event: ChangeEvent<HTMLInputElement>) =>
+      setJsonData(key, event.target.value as SolaceDataSourceOptions[K]);
 
-  const onBasicAuthUserChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onOptionsChange({ ...options, basicAuth: true, basicAuthUser: event.target.value });
-  };
-
-  const onPasswordChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onOptionsChange({
-      ...options,
-      basicAuth: true,
-      secureJsonData: { ...secureJsonData, basicAuthPassword: event.target.value },
-    });
-  };
-
-  const onResetPassword = () => {
-    onOptionsChange({
-      ...options,
-      secureJsonFields: { ...secureJsonFields, basicAuthPassword: false },
-      secureJsonData: { ...secureJsonData, basicAuthPassword: '' },
-    });
-  };
-
-  const messagingEnabled = jsonData.messagingEnabled ?? DEFAULT_OPTIONS.messagingEnabled ?? false;
+  const onNumber =
+    <K extends keyof SolaceDataSourceOptions>(key: K) =>
+    (event: ChangeEvent<HTMLInputElement>) =>
+      setJsonData(key, Number(event.target.value) as SolaceDataSourceOptions[K]);
 
   return (
     <Stack direction="column" gap={3}>
       <Stack direction="column" gap={0}>
-        <h3 className="page-heading">SEMP (management API)</h3>
+        <h3 className="page-heading">Connection</h3>
         <p>
-          Queue inventory, spool statistics and message metadata are read from the SEMP v2 monitor API. These requests
-          go through the Grafana data source proxy, so the credentials below stay on the Grafana server.
+          The plugin browses queues with the Solace JavaScript API. The connection is opened by the browser, directly to
+          the broker&apos;s Web Messaging service.
         </p>
 
+        <Alert title="These credentials are visible to anyone who can read this data source" severity="warning">
+          The Solace JavaScript API runs in the browser, so the connection details cannot be stored as a Grafana secret.
+          Use a client username restricted to read-only access to the queues you want to browse, and use{' '}
+          <code>wss://</code> outside of local development.
+        </Alert>
+
         <Field
-          label="SEMP base URL"
-          description="Scheme, host and management port only — no path. Reached from the Grafana server, e.g. http://solace:8080 or https://mybroker.messaging.solace.cloud:943"
+          label="Web Messaging URL"
+          description="Reached from the browser, not from the Grafana server. e.g. ws://localhost:8008 or wss://mybroker.messaging.solace.cloud:443"
           required
         >
           <Input
-            id="config-semp-url"
+            id="config-url"
             width={60}
-            value={options.url ?? ''}
-            placeholder="http://localhost:8080"
-            onChange={onUrlChange}
+            value={jsonData.url ?? ''}
+            placeholder="ws://localhost:8008"
+            onChange={onText('url')}
           />
         </Field>
 
-        <Field label="Default Message VPN" description="Used by queries that do not override it.">
+        <Field label="Message VPN" description="Applies to every panel using this data source." required>
           <Input
             id="config-msg-vpn"
             width={40}
             value={jsonData.msgVpn ?? ''}
             placeholder={DEFAULT_OPTIONS.msgVpn}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setJsonData('msgVpn', event.target.value)}
+            onChange={onText('msgVpn')}
           />
         </Field>
 
-        <Field label="Management username" description="A read-only monitoring user is enough." required>
+        <Field label="Client username" required>
           <Input
-            id="config-semp-user"
+            id="config-user-name"
             width={40}
-            value={options.basicAuthUser ?? ''}
-            placeholder="monitor"
-            onChange={onBasicAuthUserChange}
+            value={jsonData.userName ?? ''}
+            placeholder={DEFAULT_OPTIONS.userName}
+            onChange={onText('userName')}
           />
         </Field>
 
-        <Field label="Management password" required>
-          <SecretInput
-            id="config-semp-password"
+        <Field label="Client password" description="Leave empty if the Message VPN allows unauthenticated clients.">
+          <Input
+            id="config-password"
             width={40}
-            isConfigured={Boolean(secureJsonFields?.basicAuthPassword)}
-            value={secureJsonData?.basicAuthPassword ?? ''}
-            placeholder="Enter the SEMP password"
-            onChange={onPasswordChange}
-            onReset={onResetPassword}
+            type="password"
+            value={jsonData.password ?? ''}
+            onChange={onText('password')}
           />
         </Field>
       </Stack>
 
       <Stack direction="column" gap={0}>
-        <h3 className="page-heading">Message browsing (Solace JavaScript API)</h3>
-        <p>
-          SEMP does not expose message payloads. To read payloads and headers the plugin opens a non-destructive queue
-          browse over Web Messaging — from the browser, directly to the broker.
-        </p>
+        <h3 className="page-heading">Timeouts</h3>
 
         <Field
-          label="Enable payload browsing"
-          description="Turn off to keep the plugin SEMP-only (metadata, statistics, queue inventory)."
+          label="Idle timeout (ms)"
+          description="Stop browsing when no further message arrives within this window. A queue holding fewer messages than the panel's limit ends here, so this is the floor for how long such a query takes."
         >
-          <Switch
-            id="config-messaging-enabled"
-            value={messagingEnabled}
-            onChange={(event) => setJsonData('messagingEnabled', event.currentTarget.checked)}
+          <Input
+            id="config-idle-timeout"
+            width={20}
+            type="number"
+            min={100}
+            value={jsonData.browseIdleTimeoutMs ?? DEFAULT_OPTIONS.browseIdleTimeoutMs}
+            onChange={onNumber('browseIdleTimeoutMs')}
           />
         </Field>
 
-        {messagingEnabled && (
-          <>
-            <Alert title="The messaging credentials are visible to dashboard users" severity="warning">
-              The Solace JavaScript API runs in the browser, so these credentials cannot be stored as a Grafana secret —
-              anyone who can view this data source can read them. Use a dedicated client username that is restricted to
-              read-only queue access, and prefer <code>wss://</code> outside of local development.
-            </Alert>
+        <Field label="Total timeout (ms)" description="Hard limit for a single browse.">
+          <Input
+            id="config-total-timeout"
+            width={20}
+            type="number"
+            min={1000}
+            value={jsonData.browseTotalTimeoutMs ?? DEFAULT_OPTIONS.browseTotalTimeoutMs}
+            onChange={onNumber('browseTotalTimeoutMs')}
+          />
+        </Field>
 
-            <Field
-              label="Web Messaging URL"
-              description="Reached from the browser, not from the Grafana server. e.g. ws://localhost:8008 or wss://mybroker.messaging.solace.cloud:443"
-              required
-            >
-              <Input
-                id="config-ws-url"
-                width={60}
-                value={jsonData.webMessagingUrl ?? ''}
-                placeholder="ws://localhost:8008"
-                onChange={(event: ChangeEvent<HTMLInputElement>) => setJsonData('webMessagingUrl', event.target.value)}
-              />
-            </Field>
-
-            <Field label="Client username" required>
-              <Input
-                id="config-messaging-user"
-                width={40}
-                value={jsonData.messagingUserName ?? ''}
-                placeholder="default"
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setJsonData('messagingUserName', event.target.value)
-                }
-              />
-            </Field>
-
-            <Field label="Client password">
-              <Input
-                id="config-messaging-password"
-                width={40}
-                type="password"
-                value={jsonData.messagingPassword ?? ''}
-                placeholder="Leave empty if the VPN allows unauthenticated clients"
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setJsonData('messagingPassword', event.target.value)
-                }
-              />
-            </Field>
-
-            <Field
-              label="Idle timeout (ms)"
-              description="Stop browsing when no further message arrives within this window. A queue with fewer messages than the query limit ends here."
-            >
-              <Input
-                id="config-idle-timeout"
-                width={20}
-                type="number"
-                value={jsonData.browseIdleTimeoutMs ?? DEFAULT_OPTIONS.browseIdleTimeoutMs}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setJsonData('browseIdleTimeoutMs', Number(event.target.value))
-                }
-              />
-            </Field>
-
-            <Field label="Total timeout (ms)" description="Hard limit for a single browse operation.">
-              <Input
-                id="config-total-timeout"
-                width={20}
-                type="number"
-                value={jsonData.browseTotalTimeoutMs ?? DEFAULT_OPTIONS.browseTotalTimeoutMs}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setJsonData('browseTotalTimeoutMs', Number(event.target.value))
-                }
-              />
-            </Field>
-          </>
-        )}
+        <Field label="Connect timeout (ms)" description="Applies to the messaging session and the queue bind.">
+          <Input
+            id="config-connect-timeout"
+            width={20}
+            type="number"
+            min={1000}
+            value={jsonData.connectTimeoutMs ?? DEFAULT_OPTIONS.connectTimeoutMs}
+            onChange={onNumber('connectTimeoutMs')}
+          />
+        </Field>
       </Stack>
     </Stack>
   );

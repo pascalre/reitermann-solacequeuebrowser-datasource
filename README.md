@@ -1,115 +1,142 @@
-# Grafana data source plugin template
+# Solace Queue Browser — Grafana data source
 
-This template is a starting point for building a Data Source Plugin for Grafana.
+Browses [Solace PubSub+](https://solace.com/) queues from a Grafana dashboard and shows the messages
+that are spooled in them — payload, headers and user properties — without consuming them.
 
-## What are Grafana data source plugins?
+Frontend-only plugin: there is no Go backend to build.
 
-Grafana supports a wide range of data sources, including Prometheus, MySQL, and even Datadog. There’s a good chance you can already visualize metrics from the systems you have set up. In some cases, though, you already have an in-house metrics solution that you’d like to add to your Grafana dashboards. Grafana Data Source Plugins enables integrating such solutions with Grafana.
+## How it works
 
-## Getting started
+The plugin opens a queue browse with the Solace JavaScript API (`solclientjs`) over Web Messaging.
+The connection is made **by the browser, directly to the broker** — Grafana's server is not involved.
 
-### Frontend
+The browse is read-only. `removeMessageFromQueue()` is never called, so nothing is acknowledged,
+consumed or deleted; the messages stay available for their real consumers.
 
-1. Install dependencies
+> **Security note.** Because the Solace JavaScript API runs in the browser, the connection details
+> cannot be stored as a Grafana secret — any user who can read the data source can read them. Use a
+> client username restricted to read-only access to the queues you want to browse, and use `wss://`
+> outside of local development.
 
-   ```bash
-   npm install
-   ```
+## Configuration
 
-2. Build plugin in development mode and run in watch mode
+Everything about the connection lives on the data source, including the **Message VPN** — panels only
+name a queue.
 
-   ```bash
-   npm run dev
-   ```
+| Setting           | Notes                                                                          |
+| ----------------- | ------------------------------------------------------------------------------ |
+| Web Messaging URL | Reached from the **browser**: `ws://localhost:8008`, `wss://…solace.cloud:443` |
+| Message VPN       | Applies to every panel using this data source                                  |
+| Client username   | A read-only client username is enough                                          |
+| Client password   | May be empty if the VPN allows unauthenticated clients                         |
+| Idle timeout      | Stop when no further message arrives within this window (default 2000 ms)      |
+| Total timeout     | Hard limit for a single browse (default 20000 ms)                              |
+| Connect timeout   | Messaging session and queue bind (default 8000 ms)                             |
 
-3. Build plugin in production mode
+**Save & test** opens a real messaging session against the configured VPN and closes it again.
 
-   ```bash
-   npm run build
-   ```
+## The query
 
-4. Run the tests (using Jest)
+| Field                      | Notes                                                               |
+| -------------------------- | ------------------------------------------------------------------- |
+| Queue                      | Queue name; dashboard variables are supported                       |
+| Limit                      | Stop after this many messages (default 100)                         |
+| Payload format             | `auto`, `json`, `text`, `base64`, `hex`                             |
+| Max payload chars          | Truncate long payloads; `0` disables truncation                     |
+| User properties as columns | One `prop.<key>` column per user property found across the messages |
 
-   ```bash
-   # Runs the tests and watches for changes, requires git init first
-   npm run test
+`auto` pretty-prints JSON, falls back to UTF-8 text, and falls back again to base64 for anything
+binary — so a queue mixing formats still renders. Structured (SDT) messages are read from their
+container rather than the binary attachment.
 
-   # Exits after running all the tests
-   npm run test:ci
-   ```
+Columns come from the messages themselves, with types inferred, so a payload shape or an API version
+that adds fields shows up without a plugin change.
 
-5. Spin up a Grafana instance and run the plugin inside it (using Docker)
+### Why a browse can take a few seconds
 
-   ```bash
-   npm run server
-   ```
+A queue browse has no "end of queue" event. The browse therefore ends on whichever comes first: the
+query limit, an idle window with no new message, or the total timeout. A queue holding fewer messages
+than the limit always costs the idle timeout — lower it if that feels slow, raise it on a loaded
+broker.
 
-6. Run the E2E tests (using Playwright)
+Panels are browsed one after another rather than in parallel: every browse binds a flow on the
+broker, and a dashboard full of panels should not open a dozen flows at once.
 
-   ```bash
-   # Spins up a Grafana instance first that we tests against
-   npm run server
+## Local development
 
-   # If you wish to start a certain Grafana version. If not specified will use latest by default
-   GRAFANA_VERSION=11.3.0 npm run server
+```bash
+npm install
+npm run dev          # webpack watch
+npm run server       # Grafana + a Solace PubSub+ broker via docker compose
+npm run seed         # create demo queues and spool messages into them
+```
 
-   # Starts the tests
-   npm run e2e
-   ```
+`npm run server` starts Grafana on <http://localhost:3000> with the data source already provisioned
+(`provisioning/datasources/datasources.yml`) and a `solace/solace-pubsub-standard` broker alongside
+it:
 
-7. Run the linter
+| Port  | Service                                                      |
+| ----- | ------------------------------------------------------------ |
+| 8008  | Web Messaging (WebSocket) — what the plugin uses             |
+| 8080  | Broker Manager / SEMP (`admin` / `admin`) — to manage queues |
+| 9000  | REST messaging — used by `npm run seed`                      |
+| 55554 | SMF (remapped: macOS blocks 55555 on the host)               |
 
-   ```bash
-   npm run lint
+`npm run seed` waits for the broker, creates `demo/orders/1..3` and spools JSON messages with user
+properties into them. It talks to the broker's SEMP config API and REST messaging service directly —
+the plugin itself never uses SEMP.
 
-   # or
+The first broker start takes a minute or two.
 
-   npm run lint:fix
-   ```
+If the broker exits during startup with `FATAL: Unable to find valid network interface` /
+`Failed to update dbBaseline`, its config database was left half-written by an earlier interrupted
+start. Reset it and start again:
 
-# Distributing your plugin
+```bash
+docker compose down -v
+docker compose up
+```
 
-When distributing a Grafana plugin either within the community or privately the plugin must be signed so the Grafana application can verify its authenticity. This can be done with the `@grafana/sign-plugin` package.
+The broker needs at least 2 GiB of memory in the container VM — on Rancher Desktop, Colima or Podman
+Machine, check the VM's memory setting before blaming the broker. Grafana is wired with
+`depends_on: service_started`, so it comes up even when the broker does not.
 
-_Note: It's not necessary to sign a plugin during development. The docker development environment that is scaffolded with `@grafana/create-plugin` caters for running the plugin without a signature._
+Note that changes to `src/plugin.json` require a Grafana restart.
 
-## Initial steps
+### Other commands
 
-Before signing a plugin please read the Grafana [plugin publishing and signing criteria](https://grafana.com/legal/plugins/#plugin-publishing-and-signing-criteria) documentation carefully.
+```bash
+npm run typecheck
+npm run lint
+npx jest             # unit tests: message mapping, payload decoding, frame mapping
+npm run e2e          # @grafana/plugin-e2e tests, needs `npm run server` running
+npm run build
+```
 
-`@grafana/create-plugin` has added the necessary commands and workflows to make signing and distributing a plugin via the grafana plugins catalog as straightforward as possible.
+## Source layout
 
-Before signing a plugin for the first time please consult the Grafana [plugin signature levels](https://grafana.com/legal/plugins/#what-are-the-different-classifications-of-plugins) documentation to understand the differences between the types of signature level.
+| File                      | Purpose                                                              |
+| ------------------------- | -------------------------------------------------------------------- |
+| `src/browser.ts`          | solclientjs session, queue browser and health check                  |
+| `src/message.ts`          | `solace.Message` → flat row, declared structurally so it is testable |
+| `src/payload.ts`          | Payload decoding: JSON / UTF-8 / base64 / hex, truncation            |
+| `src/frames.ts`           | Generic row → DataFrame mapping with type inference                  |
+| `src/datasource.ts`       | Query dispatch, template variables, health check                     |
+| `src/components/`         | Config and query editors                                             |
+| `scripts/seed-broker.mjs` | Development seeding via the broker's SEMP config + REST messaging    |
 
-1. Create a [Grafana Cloud account](https://grafana.com/signup).
-2. Make sure that the first part of the plugin ID matches the slug of your Grafana Cloud account.
-   - _You can find the plugin ID in the `plugin.json` file inside your plugin directory. For example, if your account slug is `acmecorp`, you need to prefix the plugin ID with `acmecorp-`._
-3. Create a Grafana Cloud API key with the `PluginPublisher` role.
-4. Keep a record of this API key as it will be required for signing a plugin
+solclientjs is imported statically, which puts the bundle at roughly 520 KiB. That is deliberate: a
+dynamic import would move it into a separate webpack chunk, and because dev and production builds
+name chunks differently while Grafana serves one `dist` directory, a stale directory fails at runtime
+with `Loading chunk … failed`. Every query and the health check need the library anyway, so splitting
+it bought nothing. The webpack size warning on `npm run build` is expected.
 
-## Signing a plugin
+## Known limitations
 
-### Using Github actions release workflow
-
-If the plugin is using the github actions supplied with `@grafana/create-plugin` signing a plugin is included out of the box. The [release workflow](./.github/workflows/release.yml) can prepare everything to make submitting your plugin to Grafana as easy as possible. Before being able to sign the plugin however a secret needs adding to the Github repository.
-
-1. Please navigate to "settings > secrets > actions" within your repo to create secrets.
-2. Click "New repository secret"
-3. Name the secret "GRAFANA_API_KEY"
-4. Paste your Grafana Cloud API key in the Secret field
-5. Click "Add secret"
-
-#### Push a version tag
-
-To trigger the workflow we need to push a version tag to github. This can be achieved with the following steps:
-
-1. Run `npm version <major|minor|patch>`
-2. Run `git push origin main --follow-tags`
-
-## Learn more
-
-Below you can find source code for existing app plugins and other related documentation.
-
-- [Basic data source plugin example](https://github.com/grafana/grafana-plugin-examples/tree/master/examples/datasource-basic#readme)
-- [`plugin.json` documentation](https://grafana.com/developers/plugin-tools/reference/plugin-json)
-- [How to sign a plugin?](https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin)
+- A browse always starts at the oldest message. There is no seek to an offset, a message ID or a
+  timestamp — the JavaScript API does not offer one.
+- No queue discovery: the queue name is typed, not picked from a list. Listing queues would need the
+  SEMP management API, which this plugin deliberately does not use.
+- No Grafana alerting or recording rules — those need a backend plugin.
+- Browsing a queue that has an active consumer gives no guarantee that every message is seen; the
+  consumer may take messages before the browser reaches them.

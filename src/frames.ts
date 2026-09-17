@@ -58,7 +58,7 @@ function inferType(sample: unknown): FieldType {
   }
 }
 
-/** SEMP reports timestamps in whole seconds; Grafana wants epoch milliseconds. */
+/** Accepts epoch seconds, epoch milliseconds or an ISO string; Grafana wants milliseconds. */
 function normalizeTime(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     if (value === 0) {
@@ -100,9 +100,9 @@ function orderKeys(keys: string[], order: string[]): string[] {
 }
 
 /**
- * Turns an array of JSON objects (SEMP responses, browsed messages) into a
- * DataFrame, inferring field types from the data. Keeping this generic means the
- * plugin keeps working when a broker version adds or renames attributes.
+ * Turns an array of flat rows (browsed messages) into a DataFrame, inferring
+ * field types from the data. Keeping this generic means new message fields or
+ * user properties show up without touching the mapping.
  */
 export function rowsToDataFrame(rows: Row[], opts: ToFrameOptions = {}): DataFrame {
   const { refId, name, order = [], timeFields = [], exclude = [] } = opts;

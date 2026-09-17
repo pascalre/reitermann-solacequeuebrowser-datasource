@@ -1,50 +1,44 @@
-<!-- This README file is going to be the one displayed on the Grafana.com website for your plugin. Uncomment and replace the content here before publishing.
-
-Remove any remaining comments before publishing as these may be displayed on Grafana.com -->
-
 # Solace Queue Browser
 
-<!-- To help maximize the impact of your README and improve usability for users, we propose the following loose structure:
+Browses [Solace PubSub+](https://solace.com/) queues from a Grafana dashboard and shows the messages
+spooled in them — payload, headers and user properties — without consuming them.
 
-**BEFORE YOU BEGIN**
-- Ensure all links are absolute URLs so that they will work when the README is displayed within Grafana and Grafana.com
-- Be inspired ✨
-  - [grafana-polystat-panel](https://github.com/grafana/grafana-polystat-panel)
-  - [volkovlabs-variable-panel](https://github.com/volkovlabs/volkovlabs-variable-panel)
+## Overview
 
-**ADD SOME BADGES**
+The plugin opens a non-destructive queue browse with the Solace JavaScript API over the broker's Web
+Messaging service. The connection is made by the browser, directly to the broker. Nothing is
+acknowledged, consumed or deleted: the messages remain available for their real consumers.
 
-Badges convey useful information at a glance for users whether in the Catalog or viewing the source code. You can use the generator on [Shields.io](https://shields.io/badges/dynamic-json-badge) together with the Grafana.com API
-to create dynamic badges that update automatically when you publish a new version to the marketplace.
+A panel names a queue and a limit. The connection — Web Messaging URL, Message VPN and client
+credentials — is configured once on the data source.
 
-- For the URL parameter use `https://grafana.com/api/plugins/your-plugin-id`.
-- Example queries:
-  - Downloads: `$.downloads`
-  - Catalog Version: `$.version`
-  - Grafana Dependency: `$.grafanaDependency`
-  - Signature Type: `$.versionSignatureType`
-- Optionally, for the logo parameter use `grafana`.
-
-Full example: ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?logo=grafana&query=$.version&url=https://grafana.com/api/plugins/grafana-polystat-panel&label=Marketplace&prefix=v&color=F47A20)
-
-Consider other [badges](https://shields.io/badges) as you feel appropriate for your project.
-
-## Overview / Introduction
-Provide one or more paragraphs as an introduction to your plugin to help users understand why they should use it.
-
-Consider including screenshots:
-- in [plugin.json](https://grafana.com/developers/plugin-tools/reference/plugin-json#info) include them as relative links.
-- in the README ensure they are absolute URLs.
+Payloads render as pretty-printed JSON, UTF-8 text, base64 or hex; `auto` picks whichever fits, so a
+queue mixing formats still displays. User properties can be expanded into one column each.
 
 ## Requirements
-List any requirements or dependencies they may need to run the plugin.
 
-## Getting Started
-Provide a quick start on how to configure and use the plugin.
+- A Solace PubSub+ broker (software, appliance or Cloud) whose Web Messaging service is reachable
+  from the **user's browser**.
+- A client username with read access to the queues you want to browse.
+- Grafana 12.3 or newer.
 
-## Documentation
-If your project has dedicated documentation available for users, provide links here. For help in following Grafana's style recommendations for technical documentation, refer to our [Writer's Toolkit](https://grafana.com/docs/writers-toolkit/).
+## Getting started
 
-## Contributing
-Do you want folks to contribute to the plugin or provide feedback through specific means? If so, tell them how!
--->
+1. Add the data source and set the Web Messaging URL (`ws://` or `wss://`), the Message VPN and the
+   client username and password.
+2. Use **Save & test** — it opens a real messaging session against that VPN and closes it again.
+3. In a panel, type a queue name and pick a visualization; Table is the natural fit.
+
+> **Security note.** The Solace JavaScript API runs in the browser, so the connection details cannot
+> be stored as a Grafana secret — any user who can read the data source can read them. Use a client
+> username restricted to read-only queue access and `wss://` in production.
+
+## Notes and limitations
+
+- A browse always starts at the oldest message; there is no seek to an offset or timestamp.
+- A browse has no "end of queue" event, so it ends on the query limit, an idle window with no new
+  message, or the total timeout. A queue with fewer messages than the limit costs the idle timeout.
+- Queue names are typed rather than picked from a list; queue discovery would require the SEMP
+  management API, which this plugin does not use.
+- Browsing a queue with an active consumer gives no guarantee that every message is seen.
+- Alerting and recording rules are not supported; those require a backend plugin.

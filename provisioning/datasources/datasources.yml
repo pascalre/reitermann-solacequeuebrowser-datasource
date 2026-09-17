@@ -4,26 +4,17 @@ datasources:
   - name: 'Solace Queue Browser'
     uid: 'solace-queue-browser'
     type: 'reitermann-solacequeuebrowser-datasource'
-    access: proxy
     isDefault: true
     orgId: 1
     version: 1
     editable: true
 
-    # SEMP endpoint, reached from the Grafana server via the data source proxy.
-    url: 'http://solace:8080'
-    basicAuth: true
-    basicAuthUser: 'admin'
-
     jsonData:
+      # Web Messaging endpoint — opened by the browser, so this is a host-side URL.
+      url: 'ws://localhost:8008'
       msgVpn: 'default'
-      # Web Messaging endpoint, reached from the *browser*.
-      messagingEnabled: true
-      webMessagingUrl: 'ws://localhost:8008'
-      messagingUserName: 'default'
-      messagingPassword: 'default'
+      userName: 'default'
+      password: 'default'
       browseIdleTimeoutMs: 2000
       browseTotalTimeoutMs: 20000
-
-    secureJsonData:
-      basicAuthPassword: 'admin'
+      connectTimeoutMs: 8000

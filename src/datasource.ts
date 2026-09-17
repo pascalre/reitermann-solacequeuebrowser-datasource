@@ -1,93 +1,125 @@
-import { getBackendSrv, isFetchError } from '@grafana/runtime';
 import {
   CoreApp,
+  DataFrame,
   DataQueryRequest,
   DataQueryResponse,
   DataSourceApi,
   DataSourceInstanceSettings,
-  createDataFrame,
-  FieldType,
+  ScopedVars,
+  TestDataSourceResponse,
 } from '@grafana/data';
+import { getTemplateSrv } from '@grafana/runtime';
 
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, DataSourceResponse } from './types';
-import { lastValueFrom } from 'rxjs';
+import { browseQueue, testConnection } from './browser';
+import { emptyDataFrame, rowsToDataFrame } from './frames';
+import { BROWSE_COLUMNS, flattenBrowsedMessage } from './message';
+import { DEFAULT_OPTIONS, DEFAULT_QUERY, SolaceDataSourceOptions, SolaceQuery } from './types';
 
-export class DataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
-  baseUrl: string;
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return 'Unknown error';
+}
 
-  constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
+export class DataSource extends DataSourceApi<SolaceQuery, SolaceDataSourceOptions> {
+  readonly options: SolaceDataSourceOptions;
+
+  constructor(instanceSettings: DataSourceInstanceSettings<SolaceDataSourceOptions>) {
     super(instanceSettings);
-    this.baseUrl = instanceSettings.url!;
+    this.options = { ...DEFAULT_OPTIONS, ...instanceSettings.jsonData };
   }
 
-  getDefaultQuery(_: CoreApp): Partial<MyQuery> {
+  get msgVpn(): string {
+    return this.options.msgVpn ?? DEFAULT_OPTIONS.msgVpn;
+  }
+
+  getDefaultQuery(_app: CoreApp): Partial<SolaceQuery> {
     return DEFAULT_QUERY;
   }
 
-  filterQuery(query: MyQuery): boolean {
-    // if no query has been provided, prevent the query from being executed
-    return !!query.queryText;
+  applyTemplateVariables(query: SolaceQuery, scopedVars: ScopedVars): SolaceQuery {
+    return {
+      ...query,
+      queueName: query.queueName ? getTemplateSrv().replace(query.queueName, scopedVars) : query.queueName,
+    };
   }
 
-  async query(options: DataQueryRequest<MyQuery>): Promise<DataQueryResponse> {
-    const { range } = options;
-    const from = range!.from.valueOf();
-    const to = range!.to.valueOf();
+  filterQuery(query: SolaceQuery): boolean {
+    return !query.hide && Boolean(query.queueName);
+  }
 
-    // Return a constant for each query.
-    const data = options.targets.map((target) => {
-      return createDataFrame({
-        refId: target.refId,
-        fields: [
-          { name: 'Time', values: [from, to], type: FieldType.time },
-          { name: 'Value', values: [target.constant, target.constant], type: FieldType.number },
-        ],
-      });
+  private connection() {
+    const { url, userName, password, connectTimeoutMs } = this.options;
+    if (!url) {
+      throw new Error('No Web Messaging URL configured in the data source settings.');
+    }
+    return {
+      url,
+      msgVpn: this.msgVpn,
+      userName: userName ?? DEFAULT_OPTIONS.userName,
+      password,
+      connectTimeoutMs: connectTimeoutMs ?? DEFAULT_OPTIONS.connectTimeoutMs,
+    };
+  }
+
+  async query(request: DataQueryRequest<SolaceQuery>): Promise<DataQueryResponse> {
+    const targets = request.targets.filter((target) => this.filterQuery(target));
+
+    // Browses run one after another: each one binds a flow to the broker, and a
+    // dashboard full of panels should not open a dozen flows at once.
+    const frames: DataFrame[] = [];
+    const errors: Array<{ refId?: string; message: string }> = [];
+
+    for (const target of targets) {
+      try {
+        frames.push(await this.browse(target));
+      } catch (error) {
+        frames.push(emptyDataFrame(BROWSE_COLUMNS, { refId: target.refId }));
+        errors.push({ refId: target.refId, message: describeError(error) });
+      }
+    }
+
+    return { data: frames, errors: errors.length > 0 ? errors : undefined };
+  }
+
+  private async browse(target: SolaceQuery): Promise<DataFrame> {
+    const messages = await browseQueue({
+      ...this.connection(),
+      queueName: target.queueName!,
+      limit: Math.max(1, target.limit ?? DEFAULT_QUERY.limit!),
+      idleTimeoutMs: this.options.browseIdleTimeoutMs ?? DEFAULT_OPTIONS.browseIdleTimeoutMs,
+      totalTimeoutMs: this.options.browseTotalTimeoutMs ?? DEFAULT_OPTIONS.browseTotalTimeoutMs,
+      payloadFormat: target.payloadFormat ?? DEFAULT_QUERY.payloadFormat!,
+      maxPayloadChars: target.maxPayloadChars ?? DEFAULT_QUERY.maxPayloadChars!,
     });
 
-    return { data };
-  }
+    if (messages.length === 0) {
+      return emptyDataFrame(BROWSE_COLUMNS, { refId: target.refId, name: target.queueName });
+    }
 
-  async request(url: string, params?: string) {
-    const response = getBackendSrv().fetch<DataSourceResponse>({
-      url: `${this.baseUrl}${url}${params?.length ? `?${params}` : ''}`,
+    const includeUserProperties = target.includeUserProperties ?? DEFAULT_QUERY.includeUserProperties!;
+    const rows = messages.map((message) => flattenBrowsedMessage(message, includeUserProperties));
+
+    return rowsToDataFrame(rows, {
+      refId: target.refId,
+      name: target.queueName,
+      order: BROWSE_COLUMNS,
     });
-    return lastValueFrom(response);
   }
 
-  /**
-   * Checks whether we can connect to the API.
-   */
-  async testDatasource() {
-    const defaultErrorMessage = 'Cannot connect to API';
-
+  async testDatasource(): Promise<TestDataSourceResponse> {
     try {
-      const response = await this.request('/health');
-      if (response.status === 200) {
-        return {
-          status: 'success',
-          message: 'Success',
-        };
-      } else {
-        return {
-          status: 'error',
-          message: response.statusText ? response.statusText : defaultErrorMessage,
-        };
-      }
-    } catch (err) {
-      let message = '';
-      if (typeof err === 'string') {
-        message = err;
-      } else if (isFetchError(err)) {
-        message = 'Fetch error: ' + (err.statusText ? err.statusText : defaultErrorMessage);
-        if (err.data && err.data.error && err.data.error.code) {
-          message += ': ' + err.data.error.code + '. ' + err.data.error.message;
-        }
-      }
+      const transport = await testConnection(this.connection());
       return {
-        status: 'error',
-        message,
+        status: 'success',
+        message: `Connected to Message VPN "${this.msgVpn}" (${transport}).`,
       };
+    } catch (error) {
+      return { status: 'error', message: describeError(error) };
     }
   }
 }

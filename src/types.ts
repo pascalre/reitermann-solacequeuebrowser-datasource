@@ -1,31 +1,14 @@
 import { DataSourceJsonData } from '@grafana/data';
 import { DataQuery } from '@grafana/schema';
 
-/** What a single query target asks the broker for. */
-export enum SolaceQueryType {
-  /** List the queues of a Message VPN (SEMP monitor). */
-  Queues = 'queues',
-  /** Detailed stats for one queue (SEMP monitor). */
-  QueueStats = 'queueStats',
-  /** Metadata of the messages spooled in a queue (SEMP monitor, no payload). */
-  Messages = 'messages',
-  /** Non-destructive browse of a queue via the Solace JS API (payload + headers). */
-  MessagePayloads = 'messagePayloads',
-}
-
 export type PayloadFormat = 'auto' | 'text' | 'json' | 'base64' | 'hex';
 
 export interface SolaceQuery extends DataQuery {
-  queryType: SolaceQueryType;
-  /** Overrides the Message VPN configured on the data source. */
-  msgVpn?: string;
-  /** Queue name — required for everything except `Queues`. */
+  /** Queue to browse. Dashboard variables are supported. */
   queueName?: string;
-  /** SEMP `where=` expression, e.g. `queueName==order*`. Only for `Queues`. */
-  where?: string;
-  /** Maximum number of rows / messages to fetch. */
+  /** Stop after this many messages. */
   limit?: number;
-  /** How to render the binary attachment. Only for `MessagePayloads`. */
+  /** How to render the payload. */
   payloadFormat?: PayloadFormat;
   /** Add one column per user property found on the browsed messages. */
   includeUserProperties?: boolean;
@@ -34,7 +17,6 @@ export interface SolaceQuery extends DataQuery {
 }
 
 export const DEFAULT_QUERY: Partial<SolaceQuery> = {
-  queryType: SolaceQueryType.Queues,
   limit: 100,
   payloadFormat: 'auto',
   includeUserProperties: true,
@@ -42,40 +24,40 @@ export const DEFAULT_QUERY: Partial<SolaceQuery> = {
 };
 
 /**
- * Non-secret data source configuration.
+ * Data source configuration.
  *
- * NOTE: everything in here is readable by any Grafana user who can read the
- * data source. The SEMP password is *not* here — it lives in secureJsonData and
- * is injected server-side by the Grafana data source proxy. The messaging
- * password unfortunately has to be here, because the Solace JS API runs in the
- * browser (see ConfigEditor for the warning shown to the user).
+ * The Solace JavaScript API runs in the browser, so everything the connection
+ * needs has to live in `jsonData` — a Grafana secret would never reach the
+ * client. That means any user who can read this data source can read the
+ * messaging credentials. Use a client username restricted to read-only queue
+ * access. See the warning rendered in the ConfigEditor.
  */
 export interface SolaceDataSourceOptions extends DataSourceJsonData {
-  /** Default Message VPN used when a query does not override it. */
+  /** Web Messaging endpoint reachable from the browser, e.g. ws://localhost:8008. */
+  url?: string;
+  /** Message VPN — configured here, not per panel. */
   msgVpn?: string;
-
-  /** Enable the Solace JS API browse (needed for payloads). */
-  messagingEnabled?: boolean;
-  /** Web Messaging endpoint reachable from the *browser*, e.g. ws://localhost:8008. */
-  webMessagingUrl?: string;
-  /** Client username for the messaging connection. */
-  messagingUserName?: string;
-  /** Client password — stored in plain jsonData, see note above. */
-  messagingPassword?: string;
+  /** Client username. */
+  userName?: string;
+  /** Client password. */
+  password?: string;
   /** Give up browsing after this long without a new message (ms). */
   browseIdleTimeoutMs?: number;
   /** Overall cap for a single browse operation (ms). */
   browseTotalTimeoutMs?: number;
+  /** Connect timeout for the messaging session (ms). */
+  connectTimeoutMs?: number;
 }
 
-/** Only ever sent to the Grafana backend, never returned to the browser. */
-export interface SolaceSecureJsonData {
-  basicAuthPassword?: string;
-}
-
-export const DEFAULT_OPTIONS: Partial<SolaceDataSourceOptions> = {
+export const DEFAULT_OPTIONS: Required<
+  Pick<
+    SolaceDataSourceOptions,
+    'msgVpn' | 'userName' | 'browseIdleTimeoutMs' | 'browseTotalTimeoutMs' | 'connectTimeoutMs'
+  >
+> = {
   msgVpn: 'default',
-  messagingEnabled: false,
+  userName: 'default',
   browseIdleTimeoutMs: 2000,
   browseTotalTimeoutMs: 20000,
+  connectTimeoutMs: 8000,
 };

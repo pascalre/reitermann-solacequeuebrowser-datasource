@@ -1,39 +1,35 @@
 import { test, expect } from '@grafana/plugin-e2e';
-import { MyDataSourceOptions, MySecureJsonData } from '../src/types';
 
 test('smoke: should render config editor', async ({ createDataSourceConfigPage, readProvisionedDataSource, page }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await createDataSourceConfigPage({ type: ds.type });
-  await expect(page.getByLabel('Path')).toBeVisible();
+
+  await expect(page.getByLabel('Web Messaging URL')).toBeVisible();
+  await expect(page.getByLabel('Message VPN')).toBeVisible();
+  await expect(page.getByLabel('Client username')).toBeVisible();
+  await expect(page.getByLabel('Idle timeout (ms)')).toBeVisible();
 });
 
-test('"Save & test" should be successful when configuration is valid', async ({
+test('warns that the credentials are not a Grafana secret', async ({
   createDataSourceConfigPage,
   readProvisionedDataSource,
-  selectors,
   page,
 }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
-  const configPage = await createDataSourceConfigPage({ type: ds.type });
-  const healthCheckPath = `${selectors.apis.DataSource.proxy(
-    configPage.datasource.uid,
-    configPage.datasource.id.toString()
-  )}/health`;
-  await page.route(healthCheckPath, async (route) => await route.fulfill({ status: 200, body: 'OK' }));
-  await expect(configPage.saveAndTest({ path: healthCheckPath })).toBeOK();
+  await createDataSourceConfigPage({ type: ds.type });
+
+  await expect(page.getByText('visible to anyone who can read this data source')).toBeVisible();
 });
 
-test('"Save & test" should display success alert box when config is valid', async ({
+test('"Save & test" fails when no Web Messaging URL is set', async ({
   createDataSourceConfigPage,
   readProvisionedDataSource,
-  selectors,
 }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   const configPage = await createDataSourceConfigPage({ type: ds.type });
-  const healthCheckPath = `${selectors.apis.DataSource.proxy(
-    configPage.datasource.uid,
-    configPage.datasource.id.toString()
-  )}/health`;
-  await expect(configPage.saveAndTest({ path: healthCheckPath })).not.toBeOK();
-  await expect(configPage).toHaveAlert('error');
+
+  // A freshly created data source has no URL, so the health check must fail
+  // immediately instead of opening a socket and hanging.
+  await configPage.saveAndTest();
+  await expect(configPage).toHaveAlert('error', { hasText: /Web Messaging URL/ });
 });

@@ -5,11 +5,11 @@
   "id": "reitermann-solacequeuebrowser-datasource",
   "metrics": true,
   "info": {
-    "description": "Browse Solace PubSub+ queues in Grafana: queue inventory and spool statistics via the SEMP v2 monitor API, plus non-destructive message browsing with payloads and headers via the Solace JavaScript API.",
+    "description": "Non-destructive queue browser for Solace PubSub+: reads message payloads, headers and user properties straight from a queue via the Solace JavaScript API, without consuming them.",
     "author": {
       "name": "Reitermann"
     },
-    "keywords": ["datasource", "solace", "pubsub+", "queue", "semp", "messaging"],
+    "keywords": ["datasource", "solace", "pubsub+", "queue", "browser", "messaging"],
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"
