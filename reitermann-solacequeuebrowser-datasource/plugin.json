@@ -1,0 +1,52 @@
+{
+    "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+    "type": "datasource",
+    "name": "Solace Queue Browser",
+    "id": "reitermann-solacequeuebrowser-datasource",
+    "metrics": true,
+    "info": {
+        "description": "Non-destructive queue browser for Solace Event Broker: reads message payloads, headers and user properties straight from a queue via the Solace JavaScript API, without consuming them.",
+        "author": {
+            "name": "Pascal Reitermann",
+            "url": "https://github.com/pascalre"
+        },
+        "keywords": [
+            "datasource",
+            "solace",
+            "event broker",
+            "queue",
+            "browser",
+            "messaging"
+        ],
+        "logos": {
+            "small": "img/logo.svg",
+            "large": "img/logo.svg"
+        },
+        "links": [
+            {
+                "name": "Website",
+                "url": "https://github.com/pascalre/reitermann-solacequeuebrowser-datasource"
+            },
+            {
+                "name": "Documentation",
+                "url": "https://github.com/pascalre/reitermann-solacequeuebrowser-datasource#readme"
+            },
+            {
+                "name": "Report an issue",
+                "url": "https://github.com/pascalre/reitermann-solacequeuebrowser-datasource/issues"
+            },
+            {
+                "name": "License",
+                "url": "https://github.com/pascalre/reitermann-solacequeuebrowser-datasource/blob/main/LICENSE"
+            }
+        ],
+        "screenshots": [],
+        "version": "1.0.0",
+        "updated": "2026-09-19"
+    },
+    "dependencies": {
+        "grafanaDependency": ">=12.3.0",
+        "plugins": []
+    },
+    "buildMode": "production"
+}
